@@ -1,0 +1,10 @@
+.env
+.venv/
+.work/
+data/
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+*.log
+postgres-data/
+redash-data/

@@ -1,0 +1,70 @@
+name: sms-ab
+
+x-redash: &redash
+  image: redash/redash:26.9.0@sha256:fced015dbdb8bf171cbffe73e7841c9331c088b0fbf9542427cf4e72daa7f3c3
+  restart: unless-stopped
+  environment: &redash-env
+    REDASH_DATABASE_URL: postgresql://redash:${POSTGRES_PASSWORD}@postgres:5432/redash
+    REDASH_REDIS_URL: redis://redis:6379/0
+    REDASH_COOKIE_SECRET: ${REDASH_COOKIE_SECRET}
+    REDASH_SECRET_KEY: ${REDASH_SECRET_KEY}
+    REDASH_HOST: ${REDASH_URL:-http://127.0.0.1:5055}
+    REDASH_WEB_WORKERS: "1"
+    REDASH_LOG_LEVEL: WARNING
+    REDASH_QUERY_RUNNERS: redash.query_runner.pg
+    REDASH_ADDITIONAL_QUERY_RUNNERS: ""
+    REDASH_DISABLE_PUBLIC_URLS: "true"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "2"
+
+services:
+  postgres:
+    image: postgres:16.9-alpine@sha256:7c688148e5e156d0e86df7ba8ae5a05a2386aaec1e2ad8e6d11bdf10504b1fb7
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: redash
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: redash
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55435}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U redash -d redash"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  server:
+    <<: *redash
+    command: server
+    ports:
+      - "127.0.0.1:${REDASH_PORT:-5055}:5000"
+  scheduler:
+    <<: *redash
+    command: scheduler
+  worker:
+    <<: *redash
+    command: worker
+    environment:
+      <<: *redash-env
+      QUEUES: queries,scheduled_queries,schemas,periodic,emails,default
+      WORKERS_COUNT: "1"
+
+volumes:
+  postgres-data:
